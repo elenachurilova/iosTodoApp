@@ -25,7 +25,7 @@ TodoApp is a simple command-line interface (CLI) application for managing your t
 1. **Clone the repository:**
 
     ```sh
-    git clone git@github.com:elenachurilova/ios_nanodegree_todo.git
+    git clone git@github.com:elenachurilova/iosTodoApp.git
     cd TodoApp
     ```
 
