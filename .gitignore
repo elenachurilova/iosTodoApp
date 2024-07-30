@@ -90,3 +90,6 @@ fastlane/test_output
 iOSInjectionProject/
 
 UserData/
+
+# macOS system files
+.DS_Store
