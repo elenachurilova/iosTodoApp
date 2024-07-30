@@ -6,21 +6,17 @@ struct Todo : CustomStringConvertible, Codable {
     var id: UUID
     var title: String
     var isCompleted: Bool
-    var description: String 
+    var description: String {
+        return "\(title) - \(isCompleted ? "Completed" : "Pending")"
+    }
 }
 
 // Create the `Cache` protocol that defines the following method signatures:
 //  `func save(todos: [Todo])`: Persists the given todos.
 //  `func load() -> [Todo]?`: Retrieves and returns the saved todos, or nil if none exist.
 protocol Cache {
-
-    func save(todos: [Todo]) {
-
-    }
-
-    func load() -> [Todo]? {
-
-    }
+    func save(todos: [Todo])
+    func load() -> [Todo]?
 }
 
 // `FileSystemCache`: This implementation should utilize the file system 
@@ -29,10 +25,11 @@ protocol Cache {
 final class JSONFileManagerCache: Cache {
 
     // Initilize FileManager first, and then create a new directory -> return its URL
-    func getFileURL() -> String {
+    func getFileURL() -> URL {
         let fileManager = FileManager.default
         let currentDirectoryURL = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-        // 
+
+        // REMOVE
         print(currentDirectoryURL)
         
         // create UserData folder in the current directory
@@ -49,38 +46,39 @@ final class JSONFileManagerCache: Cache {
         return userTodoListURL
     }
     
-    func writeToFile(fileURL: String, toDoItem: Todo) {
-
+    func save(todos: [Todo]) {
         let jsonEncoder = JSONEncoder()
-        let jsonData = try jsonEncoder.encode(toDoItem)
-
         do {
-            try data.write(to: userTodoListURL)
+            let jsonData = try jsonEncoder.encode(todos)
+            let fileURL = getFileURL()
+            try jsonData.write(to: fileURL)
             print("Successfully wrote to file!")
         } catch {
             print("JSONFileManagerCache: error writing to file: \(error)")
         }
     }
 
-    func readFromFile(userTodoListURL: String) -> [Todo]? {
-
+    func load() -> [Todo]? { 
+        let fileURL = getFileURL()
         do {
-            let data = try Data(contentsOf: userTodoListURL)
+            let data = try Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
             let todoList = try decoder.decode([Todo].self, from: data)
             return todoList
         } catch {
             print("JSONFileManagerCache: error reading or decoding file: \(error)")
+            return nil
         }
     }
-    
+
 }
 
 // `InMemoryCache`: : Keeps todos in an array or similar structure during the session. 
 // This won't retain todos across different app launches, 
 // but serves as a quick in-session cache.
-final class InMemoryCache: Cache {
 
+final class InMemoryCache: Cache {
+    // IMPLEMENT LATER, NOT A PRIORITY 
 }
 
 // The `TodosManager` class should have:
@@ -91,29 +89,45 @@ final class InMemoryCache: Cache {
 // * A function named `func deleteTodo(atIndex index: Int)` to remove a todo using its index.
 final class TodoManager {
 
-    let fileURL = JSONFileManagerCache.getFileURL()
+    private let cache: Cache
+    private var todos = [Todo]()
 
-    func listTodos() {
-        JSONFileManagerCache.readFromFile(userTodoListURL: fileURL)
-        
+    init(cache: Cache) {
+        self.cache = cache
+        self.todos = cache.load() ?? []
+    }
+
+    func listTodos() -> [Todo] {
+        return todos
     }
 
     func addTodo(with title: String) {
-        let todoData = Todo(id: UUID(), title: title, isCompleted: false, description: "todo item")
-        do {
-            JSONFileManagerCache.writeToFile(fileURL: fileURL, toDoItem: todoData)
-        } catch {
-            print("TodoManager: error encoding data in addTodo: \(error)")
-        }
+        let todo = Todo(id: UUID(), title: title, isCompleted: false)
+        todos.append(todo)
+        cache.save(todos: todos)
     }
 
     func toggleCompletion(forTodoAtIndex index: Int) {
-
+        if isValidIndex(index) {
+            todos[index].isCompleted.toggle()
+            cache.save(todos: todos)
+        } else {
+            print("Unable to toggle the todo: invalid index")
+        }
     }
 
     func deleteTodo(atIndex index: Int) {
-
+        if isValidIndex(index) {
+            todos.remove(at: index)
+            cache.save(todos: todos)
+        } else {
+            print("Unable to delete the todo: invalid index")
+        }
     }
+
+    private func isValidIndex(_ index: Int) -> Bool {
+        return index >= 0 && index < todos.count
+    } 
 
 }
 
@@ -124,6 +138,12 @@ final class TodoManager {
 //    such as `add`, `list`, `toggle`, `delete`, and `exit`.
 //  * The enum should be nested inside the definition of the `App` class
 final class App {
+
+    private let todoManager: TodoManager
+
+    init(cache: Cache) {
+        self.todoManager = TodoManager(cache: cache)
+    }
 
     func run() {
         var iterate = true
@@ -137,52 +157,60 @@ final class App {
         let enterNumberToToggle = "\nEnter the number of the todo to toggle: "
         let enterNumberToDelete = "\nEnter the number of the todo to delete: "
 
-        print(welcome, question)
-
-        while iterate != false {
-
-            if let response = readLine() {
-                case add:
+        print(welcome)
+        
+        while iterate == true {
+            print(question)
+            if let response = readLine(), let command = Command(rawValue: response) {
+                switch command {
+                case .add:
                     print(enterTodoTitle)
                     if let addition = readLine() {
-                        TodoManager.addTodo(with: addition)
+                        todoManager.addTodo(with: addition)
                         print(todoAdded)
                     } else {
                         print(unknownInput)
                     }
-                case list:
-                    prettyListTodos()
-                case toggle:
-                    prettyListTodos()
+                case .list:
+                    prettyListTodos(yourTodos)
+                case .toggle:
+                    prettyListTodos(yourTodos)
                     print(enterNumberToToggle)
-                    if let todoIndex = readLine() {
-                        TodoManager.toggleCompletion(forTodoAtIndex: todoIndex)
+                    if let todoIndex = readLine(), let index = Int(todoIndex) {
+                        todoManager.toggleCompletion(forTodoAtIndex: index - 1)
+                        prettyListTodos(yourTodos)
                     } else {
                         print(unknownInput)
                     }
-                case delete:
-                    prettyListTodos()
-                    if let todoIndex = readLine() {
-                        TodoManager.deleteTodo(atIndex: todoIndex)
+                case .delete:
+                    prettyListTodos(yourTodos)
+                    print(enterNumberToDelete)
+                    if let todoIndex = readLine(), let index = Int(todoIndex) {
+                        todoManager.deleteTodo(atIndex: index - 1)
                     } else {
                         print(unknownInput)
                     }
-                case exit: 
+                case .exit:
                     print(kBye)
                     iterate = false
+                }
             } else {
                 print(unknownInput)
             }
         }
-    }   
-    
-
-    private func prettyListTodos() {
-        print(yourTodos)
-        TodoManager.listTodos()
     }
 
-    enum Command {
+    private func prettyListTodos(_ message: String) {
+        print(message)
+        let todos = todoManager.listTodos()
+        for (index, todo) in todos.enumerated() {
+            let status = todo.isCompleted ? "✅" : "❌"
+            print("\(status) \(index + 1). \(todo.title)")
+        }
+    }
+
+
+    enum Command: String {
         case add
         case list
         case toggle
@@ -193,4 +221,5 @@ final class App {
 
 
 // TODO: Write code to set up and run the app.
-
+let app = App(cache: JSONFileManagerCache())
+app.run()
