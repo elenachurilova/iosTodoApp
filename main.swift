@@ -9,16 +9,6 @@ struct Todo : CustomStringConvertible, Codable {
     var description: String 
 }
 
-class FileSystemCache {
-
-}
-
-class InMemoryCache {
-
-    var todos: [String] = []
-
-}
-
 // Create the `Cache` protocol that defines the following method signatures:
 //  `func save(todos: [Todo])`: Persists the given todos.
 //  `func load() -> [Todo]?`: Retrieves and returns the saved todos, or nil if none exist.
@@ -38,6 +28,52 @@ protocol Cache {
 // Utilize Swift's `FileManager` to handle file operations.
 final class JSONFileManagerCache: Cache {
 
+    // Initilize FileManager first, and then create a new directory -> return its URL
+    func getFileURL() -> String {
+        let fileManager = FileManager.default
+        let currentDirectoryURL = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+        // 
+        print(currentDirectoryURL)
+        
+        // create UserData folder in the current directory
+        let userDataURL = currentDirectoryURL.appendingPathComponent("UserData")
+
+        do {
+            try FileManager.default.createDirectory(at: userDataURL, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("JSONFileManagerCache: error creating directory: \(error)")
+        }
+
+        // create json file in the UserData directory
+        let userTodoListURL = userDataURL.appendingPathComponent("todoList.json")
+        return userTodoListURL
+    }
+    
+    func writeToFile(fileURL: String, toDoItem: Todo) {
+
+        let jsonEncoder = JSONEncoder()
+        let jsonData = try jsonEncoder.encode(toDoItem)
+
+        do {
+            try data.write(to: userTodoListURL)
+            print("Successfully wrote to file!")
+        } catch {
+            print("JSONFileManagerCache: error writing to file: \(error)")
+        }
+    }
+
+    func readFromFile(userTodoListURL: String) -> [Todo]? {
+
+        do {
+            let data = try Data(contentsOf: userTodoListURL)
+            let decoder = JSONDecoder()
+            let todoList = try decoder.decode([Todo].self, from: data)
+            return todoList
+        } catch {
+            print("JSONFileManagerCache: error reading or decoding file: \(error)")
+        }
+    }
+    
 }
 
 // `InMemoryCache`: : Keeps todos in an array or similar structure during the session. 
@@ -55,12 +91,20 @@ final class InMemoryCache: Cache {
 // * A function named `func deleteTodo(atIndex index: Int)` to remove a todo using its index.
 final class TodoManager {
 
-    func listTodos() {
+    let fileURL = JSONFileManagerCache.getFileURL()
 
+    func listTodos() {
+        JSONFileManagerCache.readFromFile(userTodoListURL: fileURL)
+        
     }
 
     func addTodo(with title: String) {
-
+        let todoData = Todo(id: UUID(), title: title, isCompleted: false, description: "todo item")
+        do {
+            JSONFileManagerCache.writeToFile(fileURL: fileURL, toDoItem: todoData)
+        } catch {
+            print("TodoManager: error encoding data in addTodo: \(error)")
+        }
     }
 
     func toggleCompletion(forTodoAtIndex index: Int) {
@@ -81,9 +125,7 @@ final class TodoManager {
 //  * The enum should be nested inside the definition of the `App` class
 final class App {
 
-
     func run() {
-        
         var iterate = true
         let welcome = "🌟 Welcome to To Do CLI 🌟"
         let question = "\nWhat would you like to do? \n(add, list, toggle, delete, exit): "
